@@ -14,44 +14,56 @@ import queue
 E = 10e-7
 results = [1]
 
+
 def calc_sum(x):
     return math.exp(-(x**2))
 
-def calc_chis(x, q):
-    chis_value = -x
-    q.put(chis_value)  # результат в очередь
 
-def calc_znam(q1, q2, event):
-    chis_value = q1.get()  # результат из первой очереди
-    znam_value = chis_value / (q2.get() + 1)  # Поделить чис на знам 
-    q1.task_done()
-    q2.task_done()
+def calc_chis(x, chis_queue):
+    chis_value = -x
+    chis_queue.put(chis_value)  # Положить результат в очередь
+
+
+def calc_znam(n, chis_queue, results_queue, event):
+    chis_value = chis_queue.get()  # Получить результат из первой очереди
+    chis_queue.task_done()
+    znam_value = n + 1
+    cur = chis_value / znam_value
+    results_queue.put(cur)
     event.set()  # Сигнализировать, что вычисление завершено
-    return znam_value
+
 
 def main():
     x = 1
     i = 0
     chis_queue = queue.Queue()
-    znam_queue = queue.Queue()
+    results_queue = queue.Queue()
     calc_event = threading.Event()
 
-    while math.fabs(results[-1]) > E:
-        # Создание и запуск потоков для вычисления числ и знам
+    while True:
+        # Создаем и запускаем поток для вычисления числителя
         th1 = threading.Thread(target=calc_chis, args=(x, chis_queue))
         th1.start()
-
-        # очередь для знам
-        znam_queue.put(i)
-
-        th2 = threading.Thread(target=lambda q1, q2, e: results.append(calc_znam(q1, q2, e) * results[-1]), args=(chis_queue, znam_queue, calc_event))
+        
+        # Создаем и запускаем поток для вычисления знам
+        th2 = threading.Thread(target=calc_znam, args=(i, chis_queue, results_queue, calc_event))
         th2.start()
 
+        # Ждем завершения вычислений
         th1.join()
         th2.join()
         calc_event.wait()
-
+        
         calc_event.clear()
+        
+        cur = results_queue.get()
+        results_queue.task_done()
+        
+        results.append(cur * results[-1])
+        
+        if math.fabs(results[-1]) <= E:
+            break
+
         i += 1
 
     y = calc_sum(x)
