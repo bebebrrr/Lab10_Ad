@@ -12,54 +12,53 @@ import threading
 import queue
 
 E = 10e-7
-
+results = [1]
 
 def calc_sum(x):
     return math.exp(-(x**2))
 
+def calc_chis(x, q):
+    chis_value = -x
+    q.put(chis_value)  # результат в очередь
 
-def calc_chis(x, n):
-    return ((-1) ** n) * (x ** (2 * n))
-
-
-def calc_znam(n):
-    return math.factorial(n)
-
-
-def calc_part(x, n, result_queue):
-    chis = calc_chis(x, n)
-    znam = calc_znam(n)
-    result_queue.put((chis, znam))
-
+def calc_znam(q1, q2, event):
+    chis_value = q1.get()  # результат из первой очереди
+    znam_value = chis_value / (q2.get() + 1)  # Поделить чис на знам 
+    q1.task_done()
+    q2.task_done()
+    event.set()  # Сигнализировать, что вычисление завершено
+    return znam_value
 
 def main():
-    x = -0.7
-    result_queue = queue.Queue()
+    x = 1
+    i = 0
+    chis_queue = queue.Queue()
+    znam_queue = queue.Queue()
+    calc_event = threading.Event()
 
-    i = 1
-    while True:
-        # Создаем поток для вычисления части ряда
-        part_thread = threading.Thread(
-            target=calc_part, args=(x, i, result_queue)
-        )
-        part_thread.start()
+    while math.fabs(results[-1]) > E:
+        # Создание и запуск потоков для вычисления числ и знам
+        th1 = threading.Thread(target=calc_chis, args=(x, chis_queue))
+        th1.start()
 
-        # Получаем результат вычисления
-        chis, znam = result_queue.get()
-        part_thread.join()
+        # очередь для знам
+        znam_queue.put(i)
 
-        # Проверяем условие остановки
-        if abs(chis / znam) < E:
-            break
+        th2 = threading.Thread(target=lambda q1, q2, e: results.append(calc_znam(q1, q2, e) * results[-1]), args=(chis_queue, znam_queue, calc_event))
+        th2.start()
 
+        th1.join()
+        th2.join()
+        calc_event.wait()
+
+        calc_event.clear()
         i += 1
 
     y = calc_sum(x)
-    calculated_sum = chis / znam
+    calculated_sum = sum(results)
     print(f"x = {x}")
-    print(f"Ожидаемое значение y = {round(y,4)}")
-    print(f"Подсчитанное значение суммы ряда = {round(calculated_sum, 7)}")
-
+    print(f"Ожидаемое значение y = {y}")
+    print(f"Подсчитанное значение суммы ряда = {calculated_sum}")
 
 if __name__ == "__main__":
     main()
